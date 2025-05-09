@@ -8,7 +8,8 @@ Temporal Hierarchical HMM
 Install the libraries from requirements.txt and then any of the files should run.
 I would recommend running all of these on GPU as the flow model can be pretty computationally heavy.
 
-To run the agent you will first need to train the RG-flow model with main_sequential run_command.txt has an example of how to run this with the correct settings.
+To run the agent you will first need to train the RG-flow model with main_sequential 
+run_command.txt has an example of how to run this with the correct settings.
 This will take around 2-4 hours depending on how much compute you have
 After training the flow model the weights will be saved to a folder within the directory that will be automatically accessed by main_agent.py
 so all you have to do is run main_agent.py after the RG-Flow model is trained. run_command.txt also has an example of this.
