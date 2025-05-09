@@ -1,0 +1,7 @@
+For training RG-Flow
+python main_sequential.py --batch_size 64 --prior gamma --cuda 0 --lr .001 --nlayers 8,8,8,8 --nresblocks 4 --nhidden 64 --concentration 1.5 --rate .5 --collect_every 1000
+ 
+
+
+run agent AFTER training RG-flow
+python main_agent.py --batch_size 64 --prior gamma --cuda 0 --lr .001 --nlayers 8,8,8,8 --nresblocks 4 --nhidden 64 --concentration 1.5 --rate .5 --collect_every 500
