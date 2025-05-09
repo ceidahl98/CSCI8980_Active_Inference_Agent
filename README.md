@@ -1,7 +1,6 @@
 # CSCI8980_Active_Inference_Agent
 Project for CSCI 8980 AI for sequential decision making
-![Best Episode Playback](best_episode_4.gif)
-![Best Episode Playback](sequence_grid_epoch44999.gif)
+
 
 
 
@@ -26,6 +25,11 @@ the layers folder contains everything for building the structure of the RG flow 
 
 the sources folder contains all of the target distribution files.
 -gamma.py is the one currently used by the model.
+
+![Best Episode Playback](best_episode_4.gif)
+Example of agent playing for an episode
+![Best Episode Playback](sequence_grid_epoch44999.gif)
+Sampled sequences of 4 images from the sequential RG-Flow model
 
 
 
