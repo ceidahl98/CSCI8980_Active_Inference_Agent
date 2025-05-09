@@ -33,8 +33,8 @@ class HMMAgent(nn.Module):
                     num_iterations=pdp_cfg.num_iterations,
                     num_features=spatial_features_partial if i != (num_spatial_latents-1) else spatial_features_full,
                     merge_threshold=pdp_cfg.merge_threshold,
-                    prior_kappa=pdp_cfg.prior_kappa,       # New hyperparameter for NIG prior
-                    prior_alpha=pdp_cfg.prior_alpha,       # New hyperparameter for NIG prior (must be > 1)
+                    prior_kappa=pdp_cfg.prior_kappa,
+                    prior_alpha=pdp_cfg.prior_alpha,
                     prior_beta=pdp_cfg.prior_beta,
                     sep_quantile=pdp_cfg.sep_quantile,
                     density_quantile=pdp_cfg.sep_density,
@@ -43,7 +43,7 @@ class HMMAgent(nn.Module):
 
                 ).cpu()
             )
-        #init pdp's for temporal latents
+
         self.temporal_PDPs = nn.ModuleList().to('cpu')
         for i in range(num_temporal_latents):
             self.temporal_PDPs.append(
@@ -56,8 +56,8 @@ class HMMAgent(nn.Module):
                     num_iterations=pdp_cfg.num_iterations,
                     num_features=temporal_features_partial if i != (num_temporal_latents-1) else temporal_features_full,
                     merge_threshold=pdp_cfg.merge_threshold,
-                    prior_kappa=pdp_cfg.prior_kappa,  # New hyperparameter for NIG prior
-                    prior_alpha=pdp_cfg.prior_alpha,  # New hyperparameter for NIG prior (must be > 1)
+                    prior_kappa=pdp_cfg.prior_kappa,
+                    prior_alpha=pdp_cfg.prior_alpha,
                     prior_beta=pdp_cfg.prior_beta,
                     sep_quantile=pdp_cfg.sep_quantile,
                     density_quantile=pdp_cfg.sep_density,
@@ -67,8 +67,7 @@ class HMMAgent(nn.Module):
                 ).cpu()
             )
 
-        # After first call to fit(), every PDP knows num_clusters
-        # so we can size the Dirichlet tables:
+
 
         num_paths_spatial = [action_space for _ in range(num_spatial_latents)]
         num_paths_temporal = [action_space if i is 0 else 4 for i in range(num_temporal_latents)]
@@ -133,11 +132,7 @@ class HMMAgent(nn.Module):
         return x
 
     def inflate_state(self,x_prev, new_S):
-        """
-        x_prev  : (B, S_old)  or  (S_old,)
-        new_S   : S_new  ≥  S_old
-        returns : (B, S_new)  or  (S_new,)
-        """
+
         if x_prev.shape[-1] == new_S:  # no growth
             return x_prev
 
@@ -148,11 +143,7 @@ class HMMAgent(nn.Module):
         return torch.cat([x_prev, pad], dim=-1)
 
     def inflate_policy(self, pi: torch.Tensor, U_new: int, fill="zeros"):
-        """
-        pi     : (U_old,) or (B, U_old)
-        U_new  : ≥ U_old
-        fill   : "uniform" or "zeros" for the new tails
-        """
+
         U_old = pi.shape[-1]
         if U_new == U_old:
             return pi
@@ -323,41 +314,6 @@ class HMMAgent(nn.Module):
             path_free_energy = (current_policy * (torch.log(current_policy + 1e-12)-total_policy_message.view(-1,current_policy.shape[-1]))).sum()
             self.free_energy[layer_idx] = (state_free_energy + path_free_energy).detach().cpu()
 
-    def one_step_efe(self,
-                     q_s,  # (B, S)
-                     q_u,  # (B, U)
-                     B,  # (S, S, U)
-                     tilde_A,  # (S, O)
-                     H_A,  # (S,)
-                     log_c,  # (O,)
-                     gamma: float = 1.0):
-        """
-        Compute one‐step expected free‐energy for each path u,
-        given current state belief q_s and path belief q_u.
-        Returns G of shape (B, U).
-        """
-
-        # 1) Predict next‐state belief for each u: qs_next[b, u, s']
-        qs_next = torch.einsum('bu,stu,bs->bus', q_u, B, q_s)  # (B, U, S)
-
-        # 2) Predict outcome belief under the collapsed likelihood
-        #    q_o[b,u,o] = Σ_s' qs_next[b,u,s'] · tilde_A[s',o]
-        q_o = torch.einsum('bus,so->buo', qs_next, tilde_A)  # (B, U, O)
-
-        # 3) Risk term:  Σ_o q_o⋅(log q_o − log c)    shape (B, U)
-        risk = (q_o * (q_o.clamp_min(1e-12).log() - log_c.T.unsqueeze(0))).sum(-1)
-
-        # 4) Ambiguity term: Σ_{s'} q_s_next⋅H_A[s']
-        ambiguity = (qs_next * H_A).sum(-1)  # (B, U)
-
-        # 5) One‐step EFE
-        G = risk + ambiguity  # (B, U)
-
-        # 6) (Optional) temperature‐softened “posterior” over u
-        Q_u = torch.softmax(-gamma * G,dim=-1)
-
-
-        return G, Q_u
 
 
 
@@ -398,13 +354,13 @@ class HMMAgent(nn.Module):
         prev_global_FE = float('inf')
         for sweep in range(max_sweeps):
 
-            # ---------- ONE update per layer (Gauss‑Seidel) ----------
+
             for idx, (obs, ltype) in enumerate(layer_spec):
                 if obs is None:
                     continue
                 self._get_messages(obs, idx, ticks, layer_type=ltype)
 
-            # ---------- convergence check on *total* free energy ----
+
             global_FE = sum(self.free_energy)  # scalar
 
             if prev_global_FE - global_FE < tol * abs(global_FE):
@@ -454,9 +410,7 @@ class HMMAgent(nn.Module):
 
         return action
 
-    # ---------- 3. expected-free-energy & policy update --------------------
 
-    # ---------- helpers ----------------------------------------------------
     def _update_prior_shapes(self):
 
         spatial_shapes  = [pdp.num_clusters for pdp in self.spatial_PDPs]
@@ -474,7 +428,6 @@ class HMMAgent(nn.Module):
             S = shapes[l]
             U = self.num_paths[l]
 
-            # --- A[l]: likelihood p(o|s), shape (oldS×oldS)  ------------
             A = self.A[l].detach()
             oldS = A.shape[0]
             if S != oldS:
@@ -492,7 +445,7 @@ class HMMAgent(nn.Module):
                     pass
                 self.A[l] = nn.Parameter(A,requires_grad=False)
 
-            # --- B[l]: transition p(s'|s,u), shape (oldS×oldS×oldU)  ---------
+
             B = self.B[l].detach()
             oldS, _, oldU = B.shape
 
@@ -520,7 +473,7 @@ class HMMAgent(nn.Module):
 
 
 
-            # --- U[l]: path‐transition p(u'|u), shape (oldU×oldU)  ----------
+
             Cmat  = self.U[l].detach()
             oldU2 = Cmat.shape[0]
             if U != oldU2:
@@ -538,7 +491,6 @@ class HMMAgent(nn.Module):
                     pass
                 self.U[l] = nn.Parameter(Cmat,requires_grad=False)
 
-            # --- C[l]: preference vector  p(o), shape = (O, 1) -----------------
             Cvec = self.C[l].detach()  # (old_O, 1)
             old_O = Cvec.shape[0]
             new_O = S  # outcomes grow/shrink with child‑states
@@ -556,7 +508,6 @@ class HMMAgent(nn.Module):
 
             self.C[l] = nn.Parameter(Cvec,requires_grad=False)  # keep shape (new_O, 1)
 
-            # --- D/E only for non-top levels l < L−1  ------------------
 
             # D: p(s_child|s_parent)
             S = shapes[l]  # # of child‐states at layer l
@@ -599,11 +550,10 @@ class HMMAgent(nn.Module):
 
             self.D[l] = nn.Parameter(Dmat,requires_grad=False)
 
-            # --- E: p(u_child | s_parent), shape = (actions, parents) ---
             Emat = self.E[l].detach()
             old_actions, old_parents2 = Emat.shape
 
-            # decide new size
+
             if l != L - 1:
                 new_actions = U
                 new_parents2 = shapes[l + 1]
@@ -659,8 +609,9 @@ class HMMAgent(nn.Module):
                     else:
                         pass
 
-                # re-assign as a non-learnable buffer
+
                 self.total_joint_su[l] = J
+
         for layer in range(self.total_layers):
             self.states[layer] = self.inflate_state(self.states[layer],self.A[layer].shape[0])
             self.current_policy[layer] = self.inflate_policy(self.current_policy[layer],self.B[layer].shape[-1])
@@ -676,7 +627,6 @@ class HMMAgent(nn.Module):
         alpha_gate0 = self.dirichlet_init_val
         device = 'cpu'
 
-        # A : p(o|s)  →  for each s, a random column of length O
         self.A = []
         for S in shapes:
             # shape = (O, S)
@@ -684,7 +634,7 @@ class HMMAgent(nn.Module):
 
             self.A.append(nn.Parameter(init.detach().cpu(), requires_grad=False).detach().cpu())
 
-        # B : p(s'|s,u)  →  (S, S, U)
+
         self.B = []
         for S, U in zip(shapes, self.num_paths):
             init = alpha_gate0 + torch.rand(S, S, U, device=device)*.001
@@ -698,14 +648,14 @@ class HMMAgent(nn.Module):
 
             self.C.append(nn.Parameter(init.detach().cpu(), requires_grad=False).detach().cpu())
 
-        # U : same as C (if you really need both, else remove one)
+
         self.U = []
         for U in self.num_paths:
             init = alpha_gate0 + torch.rand(U, U, device=device)*.001
 
             self.U.append(nn.Parameter(init.detach().cpu(), requires_grad=False).detach().cpu())
 
-        # D : p(child|parent)  →  (S_child, S_parent)
+
         self.D = []
         for i, S in enumerate(shapes):
             if i < len(shapes) - 1:
@@ -717,7 +667,7 @@ class HMMAgent(nn.Module):
 
             self.D.append(nn.Parameter(init.detach().cpu(), requires_grad=False).detach().cpu())
 
-        # E : p(a|u)  →  (A, U)
+
         self.E = []
         for i, U in enumerate(self.num_paths):
             if i < len(shapes) - 1:
@@ -731,8 +681,8 @@ class HMMAgent(nn.Module):
         self.total_u = [nn.Parameter(torch.zeros(path,1),requires_grad=False) for path in self.num_paths]
         self.total_joint_su = [nn.Parameter(torch.zeros(self.num_paths[i+1],shapes[i]),requires_grad=False) for i in range(len(shapes)-1)]
 
-    #propose adding new macro paths for no  n-motor temporal layers
-    def _propose_path_split(self):
+
+    def _propose_path_split(self): #currently not used
         num_non_motor_temporal_layers = len(self.temporal_PDPs)-1
         temporal_B, temporal_U, temporal_E      = self.B[-num_non_motor_temporal_layers:], self.U[-num_non_motor_temporal_layers:], self.E[-num_non_motor_temporal_layers:]
         total_u,total_joint_su = self.total_u[-num_non_motor_temporal_layers:],self.total_joint_su[-num_non_motor_temporal_layers]
@@ -745,17 +695,16 @@ class HMMAgent(nn.Module):
             # loop over all current paths
             for u in range(paths):
                 n_state = joint_su[:, u]                    # S counts
-                if n_state.sum() < 1:                       # never used → ignore
+                if n_state.sum() < 1:                       # never used
                     continue
 
-                # 1) propose a deterministic split
+
                 n1, n2 = self.propose_partition(n_state)         # each shape (S,)
 
-                # 2) deltaF for B/E    (state-related tables)
                 dF_state = self.deltaF_dirichlet(n_state, n1, n2, a_state)
 
-                # 3) deltaF for C      (path-transition table)
-                nU_col   = U[:, u].clone() * 0.0            # no data term → use zero counts
+
+                nU_col   = U[:, u].clone() * 0.0
                 dF_path  = self.deltaF_dirichlet(nU_col, nU_col, nU_col, a_path)
 
                 # 4) keep split only if global deltaF < 0
@@ -779,41 +728,25 @@ class HMMAgent(nn.Module):
              - term(n1, A1) - term(n2, A2)
 
     def propose_partition(self,hist: torch.Tensor):
-        """
-        Split a 1-D count vector hist (length = # states S) into two child
-        histograms such that each child gets (roughly) half of the total mass
-        and both children are non-empty.
 
-        Parameters
-        ----------
-        hist : torch.Tensor, shape (S,)
-            Non-negative integer or float counts over states.
-
-        Returns
-        -------
-        n1, n2 : torch.Tensor, shape (S,), sum = hist
-            Two disjoint count vectors whose element-wise sum reconstructs
-            the original counts.
-        """
         if hist.ndim != 1:
             raise ValueError("hist must be a 1-D tensor")
 
         S = hist.size(0)
         total = hist.sum()
-        if total < 2:  # cannot split a singleton
+        if total < 2:
             return hist.clone(), torch.zeros_like(hist)
 
-        # ── 1. order state indices by descending frequency ──────────────────
+
         order = hist.argsort(descending=True)
         cumsum = hist[order].cumsum(0)
 
-        # ── 2. left child gets the most frequent bins until ≥½ the mass ────
-        left_mask = cumsum <= total // 2
-        #  ensure the right child is non-empty
-        if left_mask.all():  # all states went to the left
-            left_mask[-1] = False  # move rarest one to the right
 
-        # ── 3. build the two child histograms ───────────────────────────────
+        left_mask = cumsum <= total // 2
+
+        if left_mask.all():
+            left_mask[-1] = False
+
         n1 = torch.zeros_like(hist)
         n2 = torch.zeros_like(hist)
         n1[order[left_mask]] = hist[order[left_mask]]
@@ -822,34 +755,14 @@ class HMMAgent(nn.Module):
         return n1, n2
 
     def add_dirichlet_column(self,tensor: torch.Tensor, index: int, axis: int = -1) -> torch.Tensor:
-        """
-        Return a new tensor with the slice at `index` along `axis` duplicated at the end of that axis.
 
-        Args:
-            tensor: Input Dirichlet parameter tensor (any shape).
-            index:  Index of the slice to clone.
-            axis:   Dimension along which to clone (default: last axis).
-
-        Returns:
-            Expanded tensor with one extra slice along `axis`.
-        """
         # Extract the slice to clone
         col = tensor.index_select(dim=axis, index=torch.tensor([index], device=tensor.device))
         # Concatenate along the specified axis
         return torch.cat([tensor, col], dim=axis)
 
     def add_dirichlet_rowcol(self,tensor: torch.Tensor, index: int) -> torch.Tensor:
-        """
-        Return a new 2D tensor with both the row and column at `index` duplicated.
-        The new column is appended on the right, and the new row is appended at the bottom.
 
-        Args:
-            tensor: 2D Dirichlet-parameter tensor of shape (U, U).
-            index:  Index of the row/column to clone.
-
-        Returns:
-            Expanded (U+1, U+1) tensor.
-        """
         if tensor.ndim != 2:
             raise ValueError("clone_dirichlet_rowcol requires a 2D tensor")
 
@@ -916,51 +829,23 @@ class HMMAgent(nn.Module):
                 self.C += 1/num_blocks[l]*weighted_obs.view(-1,weighted_obs.shape[-1])
 
     def gate_A(self, A, deltaA,idx, alpha_gate: float = 512.0, eps: float = 1e-10):
-        """
-        Soft‑gating coefficient p_up ∈ (0, 1) for an A column family that uses
-        BOTH the mutual‑information term and the expected‑cost (risk) term.
 
-        Parameters
-        ----------
-        A   : torch.Tensor (O, S)
-            Current Dirichlet counts for p(o|s)                      –  Eq. (5)
-        deltaA  : torch.Tensor (O, S)
-            Candidate pseudo‑counts to add (outer‑product obs × q_s) –  Eq. (5)
-        alpha_gate   : float
-            Precision hyper‑prior for the gate (hard → ∞)           –  Eq. (7)
-        eps : float
-            Tiny constant to keep log() finite when preference = 0
-        Returns
-        -------
-        p_up : torch.Tensor ()   (scalar)
-            Weight with which to add deltaA  (0 ⟶ ignore, 1 ⟶ full update)
-        """
-
-        # ------------------------------------------------------------------
-        # 1)  Retrieve (and log) the preference vector stored on self
-        # ------------------------------------------------------------------
 
         log_pref = self.digamma(dist.Dirichlet(self.C[idx]))
 
-        # ------------------------------------------------------------------
-        # 2)  Free‑energy functional for one A family (Eq. 6)
-        # ------------------------------------------------------------------
-        def FE(a):
-            col_sum = a.sum(0, keepdim=True)  # alpha_gatē_s   (1,S)
-            p_os = a / col_sum  # p(o|s) (O,S)
 
-            # Mutual‑information (complexity term)
+        def FE(a):
+            col_sum = a.sum(0, keepdim=True)  #   (1,S)
+            p_os = a / col_sum
+
             MI = (p_os * (torch.digamma(a) - torch.digamma(col_sum))).sum()
 
-            # Expected‑cost / risk term  (use marginal p(o) = Σ_s p(o|s) q(s))
             p_o = p_os.sum(1)  # (O,)
             risk = -(p_o * log_pref).sum()
 
             return MI + risk
 
-        # ------------------------------------------------------------------
-        # 3)  Gate: softmax over { status‑quo , updated }
-        # ------------------------------------------------------------------
+
         G_no = FE(A)
         G_yes = FE(A + deltaA)
 
@@ -981,16 +866,13 @@ class HMMAgent(nn.Module):
 
     @contextmanager
     def saved_beliefs(self):
-        """
-        Context manager: snapshot {states, prev_state, policy, prev_policy},
-        run planning that mutates them, then restore.
-        """
+
         stash = dict(
             states=[t.detach().detach().cpu().clone() for t in self.states],
             prev_states=[t.detach().detach().cpu().clone() if t is not None else None for t in self.previous_state],
             policy=[t.detach().cpu().detach().clone() for t in self.current_policy],
             prev_policy=[t.detach().detach().cpu().clone() if t is not None else None for t in self.previous_policy],
-            free_energy= self.free_energy.copy()  # if you overwrite it
+            free_energy= self.free_energy.copy()
         )
         try:
             yield
@@ -1002,39 +884,27 @@ class HMMAgent(nn.Module):
             self.free_energy = stash["free_energy"]
 
     def rollout_predictive_trajectory(self, horizon=1, gamma=32.0):
-        """
-        Predict a complete hierarchical trajectory from *current* filtering
-        posteriors.  Results are stored in
-            self.pred_state  : list[L] of lists[T+1] (B,S)
-            self.pred_policy : list[L] of lists[T]   (B,U)
-        """
+
         device = self.device
         L = self.total_layers
 
-        # ——— initialize prediction buffers ———
+
         self.pred_state = [[] for _ in range(L)]
         self.pred_policy = [[] for _ in range(L)]
-        # store t=0 beliefs
+
         for l in range(L):
             self.pred_state[l].append(self.states[l].detach().cpu())
             self.pred_policy[l].append(self.current_policy[l].detach().cpu())
 
-        # assume you have something like:
-        #   self.layer_order    = [top_layer_idx, ..., bottom_layer_idx]
-        #   self.layer_types    = ['temporal', …, 'spatial']
-        # If you don’t, you can build them once in __init__:
-        #     self.layer_order = list(range(self.total_layers))
-        #     self.layer_types = ['temporal']*n_temporal + ['spatial']*n_spatial
 
         for t in range(horizon):
             ticks = [False] * L
 
-            # roll each layer in turn
+
             for l in self.layer_order:
-                # 1) tick this layer
+
                 ticks[l] = True
 
-                # 2) message-pass (plan step) at layer l
                 if t != 0 and l !=0:
                     self._get_messages(
                         obs=None,
@@ -1044,15 +914,14 @@ class HMMAgent(nn.Module):
                         plan_gamma=gamma
                     )
 
-                # 3) save “previous” for logging or later use
                 self.previous_state[l] = self.states[l].detach().cpu()
                 self.previous_policy[l] = self.current_policy[l].detach().cpu()
 
-                # 4) predictive update for state & policy
+
                 Bl = self.B[l].to(device)  # transition tensor
                 Ul = self.U[l].to(device)  # policy‐transition
 
-                # T‐step prediction:  q(sₜ₊₁) = Σ_sₜ [ T(sₜ₊₁|sₜ,uₜ) · q(uₜ) ] q(sₜ)
+
                 weighted_T = self.normalize_dist(
                     torch.einsum('snu,bu->bns', Bl, self.current_policy[l].to(device))
                 )
@@ -1060,17 +929,17 @@ class HMMAgent(nn.Module):
                     torch.einsum('bns,bs->bn', weighted_T, self.states[l].to(device))
                 ).detach().cpu()
 
-                # next‐step policy: q(uₜ₊₁) = q(uₜ) · U
+                # next‐step policy
                 self.current_policy[l] = (
                         self.current_policy[l].to(device)
                         @ self.normalize_dist(Ul)
                 ).detach().cpu()
 
-                # 5) record the predictions
+
                 self.pred_state[l].append(self.states[l])
                 self.pred_policy[l].append(self.current_policy[l])
 
-                # 6) untick
+
                 ticks[l] = False
 
 
