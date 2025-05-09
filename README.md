@@ -1,6 +1,6 @@
 # CSCI8980_Active_Inference_Agent
 Project for CSCI 8980 AI for sequential decision making
-
+![Best Episode Playback](best_episode_4.gif)
 
 args.py contains all the arguments you should need to alter if you want to train the RG-flow model, theres a shell script that has an examlpe prompt
 main_agent.py will run the agent on cartpole. The RG-flow model weights cant be uploaded here so it should run but it wont learn anything
