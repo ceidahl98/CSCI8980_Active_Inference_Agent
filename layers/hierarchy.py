@@ -218,17 +218,7 @@ class HierarchyBijector(Flow):
         return lower_x, upper_x,ldj,upper_ldjs#, spatial_latents,temporal_latents
 
     def inverse(self, z_top, z_lower):
-        """
-        Parameters
-        ----------
-        z_top   : (B, C, T, H, W)    – output of the *temporal* encoder
-        z_lower : (B, C, H0, W0)     – bottom-most 2-D latents you stashed
-
-        Returns
-        -------
-        x        : (B, C, H0, W0)    – reconstructed video / image sequence
-        inv_ldj  : (B,)              – log|det J^{-1}| accumulated along the path
-        """
+       
         B, C, T, H, W = z_top.shape
 
         inv_ldj = z_top.new_zeros(B)
@@ -245,25 +235,25 @@ class HierarchyBijector(Flow):
                 reversed(self.indexISeq),
                 reversed(self.indexJSeq)
         ):
-            # 1) pull out the RG-block volume
+           
 
             z_top, z_patch = utils.dispatch_3d(idxK, idxI, idxJ, z_top)  # (B,C,M,P)
 
-            # 2) reshape so the RG bijector sees a proper (mini-)image
+         
             z_patch = utils.stackRGblock_3d(z_patch,
                                             T/2,  # 2
                                             patch_size=self.patch_size)  # K
 
-            # 3) run *inverse* of that bijector
+           
             z_patch, ldj = layer.inverse(z_patch)  # same shape
             inv_ldj += ldj.view(B, -1).sum(1)
 
-            # 4) un-stack back to (B,C,M,P)
+          
             z_patch = utils.unstackRGBlock_3d(z_patch,
                                               batch_size=B,
                                               )
 
-            # 5) scatter into the coarse volume
+      
             z_top = utils.collect_3d(idxK, idxI, idxJ, z_top, z_patch)
 
         z_top = self.organize_latents_inverse(z_top)
@@ -275,9 +265,7 @@ class HierarchyBijector(Flow):
 
 
         z_lower = utils.collect(idxI_bottom, idxJ_bottom, z_lower, z_top)
-        # After squeeze we have (B,C,H0,W0); utils.collect(...) returns same shape
-
-        # ------------- C.  Invert the spatial (2-D) hierarchy --------------
+     
         x = z_lower  # rename for clarity
 
         for i in reversed(range(len(self.layers))):
