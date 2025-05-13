@@ -170,6 +170,38 @@ class HMMAgent(nn.Module):
     def digamma(self,a):
         a0 = a.concentration.sum(-1, keepdim=True)  # shape (..., 1)
         return torch.digamma(a.concentration) - torch.digamma(a0)
+
+    def one_step_efe(self,
+                     q_s,  # (B, S)
+                     q_u,  # (B, U)
+                     B,  # (S, S, U)
+                     tilde_A,  # (S, O)
+                     H_A,  # (S,)
+                     log_c,  # (O,)
+                     gamma: float = 1.0):
+        """
+        Compute one‐step expected free‐energy for each path u,
+        given current state belief q_s and path belief q_u.
+        Returns G of shape (B, U).
+        """
+
+
+        qs_next = torch.einsum('bu,stu,bs->bus', q_u, B, q_s)  # (B, U, S)
+
+        q_o = torch.einsum('bus,so->buo', qs_next, tilde_A)  # (B, U, O)
+
+        risk = (q_o * (q_o.clamp_min(1e-12).log() - log_c.T.unsqueeze(0))).sum(-1)
+
+
+        ambiguity = (qs_next * H_A).sum(-1)  # (B, U)
+
+
+        G = risk + ambiguity  # (B, U)
+
+        Q_u = torch.softmax(-gamma * G,dim=-1)
+
+
+        return G, Q_u
     def _get_messages(self,obs=None,layer_idx=0,tick=None, layer_type = 'spatial',plan_gamma=None): #infer state for a given layer and calculate free energy
 
         num_children = self.num_children[layer_idx+1] if layer_idx is not self.total_layers-1 else 2
